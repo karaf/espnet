@@ -12,6 +12,10 @@
 
 
 stage=0
+stage_last=1000000000
+stage_1train=0
+stage_2train=0
+
 # -- data
 data_train=dump/train/deltafalsecvntrue
 data_dev=dump/dev/deltafalsecvntrue
@@ -50,7 +54,7 @@ nlsyms=$lang/non_lang_syms.txt
 mexpdir=exp/${expname}.adadelta.AttCtcOut
 m2expdir=${mexpdir}_it2
 
-if [ ${stage} -le 1 ]; then
+if [ ${stage} -le 1 ] && [ ${stage_last} -ge 1 ]; then
     echo "stage 1: NN language transfer"
 
     elayers=$(source $train_conf; echo $elayers)
@@ -68,6 +72,7 @@ if [ ${stage} -le 1 ]; then
 	mkdir -p $mexpdir/results; cp $multnn_dir/results/model.acc.best $mexpdir/results
 	
 	./run/train_espnet.sh \
+	    --stage $stage_1train \
 	    --train_conf $train_conf \
 	    --eval_conf $eval_conf \
 	    --expdir ${mexpdir}  \
@@ -78,7 +83,7 @@ if [ ${stage} -le 1 ]; then
     fi
 fi
 
-if [ ${stage} -le 2 ]; then
+if [ ${stage} -le 2 ] && [ ${stage_last} -ge 2 ]; then
     echo "stage 2: NN fine tunning"
 
     if [ ! -f ${m2expdir}/model.loss.best ]; then
@@ -91,6 +96,7 @@ if [ ${stage} -le 2 ]; then
             --adapt yes"
 	
 	./run/train_espnet.sh \
+	    --stage $stage_2train \
 	    --train_conf $train_conf \
 	    --eval_conf $eval_conf \
 	    --expdir ${m2expdir}  \

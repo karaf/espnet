@@ -12,6 +12,10 @@
 
 
 stage=0
+stage_last=1000000000
+stage_1train=0
+stage_2train=0
+
 # -- data
 data_train=dump/train/deltafalsecvntrue
 data_dev=dump/dev/deltafalsecvntrue
@@ -50,14 +54,15 @@ nlsyms=$lang/non_lang_syms.txt
 mexpdir=exp/${expname}.AttCtcOut
 m2expdir=${mexpdir}_it2
 
-if [ ${stage} -le 1 ]; then
+if [ ${stage} -le 1 ] && [ ${stage_last} -ge 1 ]; then
     echo "stage 1: NN language transfer"
 
     elayers=$(source $train_conf; echo $elayers)
     extra_train_opts="--modify-output true \
+        --adaptdir  $multnn_dir/results \
         --resume $multnn_resume \
         --opt sgd \
-        --lr 5e-2 \
+        --lr 1e-1 \
         --lr-decay 0.5 \
         --epochs 10 \
         --adapt yes \
@@ -68,10 +73,10 @@ if [ ${stage} -le 1 ]; then
 
     if [ ! -f ${mexpdir}/model.loss.best ]; then
 #	mkdir -p $mexpdir/results; cp $multnn_dir/results/{model.acc.best,model.conf} $mexpdir/results
-	mkdir -p $mexpdir/results; cp $multnn_dir/results/model.acc.best $mexpdir/results
+#	mkdir -p $mexpdir/results; cp $multnn_dir/results/model.acc.best $mexpdir/results
 	
 	./run/train_espnet.sh \
-	    --stage 0 \
+	    --stage $stage_1train \
 	    --train_conf $train_conf \
 	    --eval_conf $eval_conf \
 	    --expdir ${mexpdir}  \
@@ -82,19 +87,22 @@ if [ ${stage} -le 1 ]; then
     fi
 fi
 
-if [ ${stage} -le 2 ]; then
+if [ ${stage} -le 2 ] && [ ${stage_last} -ge 2 ]; then
     echo "stage 2: NN fine tunning"
 
     if [ ! -f ${m2expdir}/model.loss.best ]; then
-	mkdir -p $m2expdir/results; cp $mexpdir/results/{model.acc.best,model.conf} $m2expdir/results
+	#mkdir -p $m2expdir/results; cp $mexpdir/results/{model.acc.best,model.conf} $m2expdir/results
 
 	epochs=15
-	extra_train_opts="   --opt sgd \
-            --lr 1e-2 \
+	extra_train_opts="
+            --adaptdir  $mexpdir/results \
+            --opt sgd \
+            --lr 5e-2 \
             --epochs ${epochs} \
             --adapt yes"
 	
 	./run/train_espnet.sh \
+	    --stage $stage_2train \
 	    --train_conf $train_conf \
 	    --eval_conf $eval_conf \
 	    --expdir ${m2expdir}  \
