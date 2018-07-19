@@ -3,7 +3,7 @@
 # Licensed under the Apache License, Version 2.0 (the "License")
 
 #begin configuration section.
-tmp_root=/mnt/scratch01/tmp/$USER # will be deleted after not using 30days.
+tmp_root=/mnt/scratch0$(($RANDOM % 6 + 1))/tmp/$USER # will be deleted after not using 30days.
 #end configuration section.
 
 #echo "$0 $@"  # Print the command line for logging
