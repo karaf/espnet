@@ -112,6 +112,11 @@ done
 
 
 feakind=MultBNv1
+mult_rdt_cfg=/mnt/matylda3/karafiat/BABEL/tasks/FeatureExtraction.BUTv3_Y4/systems/MultRDTv1.ENV
+
+feakind=MultBNv1.1stage
+mult_rdt_cfg=/mnt/matylda3/karafiat/BABEL/tasks/FeatureExtraction.BUTv3_Y4/systems/MultRDTv1.1stageNN.ENV
+
 fbankdir=data-$feakind
 expdir_root=../Baselines.v2
 for i in  202 102 207 404; do
@@ -121,8 +126,9 @@ for i in  202 102 207 404; do
     cd $dir
     # Generate and dump features
     for x in ${train_set} ${train_dev} ${recog_set}; do
+#	local/make_symlink_dir.sh data-$feakind
         local/fea.genMultRDT.sh \
-            --feagenopt "--stage_last 20" data/$x data-$feakind/$x
+            --mult_rdt_cfg $mult_rdt_cfg --feagenopt "--stage_last 20" data/$x data-$feakind/$x
     done
     ./run/run.new.bn.sh --recog_set eval_${i} --stage 2 \
 	--feakind ${feakind} &                           # Train on new fea
@@ -273,16 +279,40 @@ echo -e "<noise>\n<v-noise>\n<silence>\n<unk>" > ${lang_train}/non_lang_syms.txt
 # Multilingual BN + AM 
 MultBNdir=/mnt/matylda3/karafiat/BABEL/GIT/espnet.github.v2/egs/babel/Multiling.v3/exp/dnn_bn3L
 MultBNlabel=Mult9L_bn3L
+lang_train=data/lang.wrd2grp
+ali=exp/tri5b_MultRDTv1_short_ali  # char alignement
+
+MultBNdir=/mnt/matylda3/karafiat/BABEL/GIT/espnet.github.v2/egs/babel/Multiling.v3/exp/dnn_Mult9L-bn3L-wrd2phnv0
+MultBNlabel=Mult9L-bn3L-wrd2phnv0
+ali=exp/tri5b_MultRDTv1_short_wrd2phnv0_ali # phn alignment
+lang_train=data/lang.wrd2phnv0
+
+# - train BN on limit set
+cd ../Multiling.v3/
+dir.LinkToScratch.sh data-$MultBNlabel
+./run/run.train_bn.sh --stage 2 --stage_last 2 --njfea 100 \
+    --ali $ali --lang_train $lang_train \
+    --dumpdir_name deltafalsecvntrue    \
+    --train_set train --train_dev dev --recog_set "" \
+    --feadir_bn data-$MultBNlabel --dir $MultBNdir # Train+Forward NN # stage 2 train; stage 3 forward
+
+# - Forward
+
 cd ../Multiling.v2/
+cd ../Multiling.v3/
 dir.LinkToScratch.sh data-$MultBNlabel
 ./run/run.train_bn.sh --stage 3 --njfea 100 \
+    --ali $ali \
     --dumpdir_name deltafalse \
     --train_set train_mult --train_dev dev_mult --recog_set "" \
-    --feadir_bn data-$MultBNlabel --dir $MultBNdir # Forward NN
+    --feadir_bn data-$MultBNlabel --dir $MultBNdir # Train+Forward NN # stage 2 train; stage 3 forward
 
 ./run/run.new.bn.sh --recog_set "" --stage 2 \
     --train_set train_mult --train_dev dev_mult  \
     --feakind $MultBNlabel & # Train on new fea
+
+
+
 
 # Multilingual BN + AM  (8kHz)
 MultBNdir=/mnt/matylda3/karafiat/BABEL/GIT/espnet.github.v2/egs/babel/Multiling.v3/exp/dnn_24fbank8k.bn3L/
@@ -362,3 +392,45 @@ data_eval=data-$feakind/eval_${lang_id}
     --data_train $data_train \
     --data_dev   $data_dev \
     --data_eval  $data_eval &
+
+# ---------------------------------
+# traninig from GRaphones
+# ---------------------------------
+rootgraphonedir=../../babel.Yenda
+
+lang_id=202
+
+label=graphones.6.2.3
+
+mkdir -p data/$label
+
+# Put together train+dev and do some easy cleaning <.*>:.* -> <.*> 
+awk '{ 
+  sub("-[^-]+$","",$1); # cut lang_name   
+  for(i=2;i<=NF;i++) sub(">:.*",">",$i)
+  if($2=="<space>") $2=""
+  print
+}' $rootgraphonedir/${lang_id}-*/{et,tr,dt}*/text.${label} >  data/$label/text
+
+# Prepare dict 
+awk '{for(i=2;i<=NF;i++) W[$i]=1}; END{for(w in W) print w}'  data/$label/text | sort |\
+   awk 'BEGIN{print "<unk>"}; $1 != "<unk>"{print}' |\
+   awk '{print $1 " " NR}' > data/$label/train_units.txt
+awk '$1 ~ /^<.*>$/{print $1}' data/$label/train_units.txt >  data/$label/non_lang_syms.txt
+
+# Convert json
+awk '
+k==0{MAP[$1]=$2; nSym=NR}
+k==1{seg=$1; $1=""; TEXT[seg]=$0}
+k==2 && ($1 == "\"utts\":"){uttNR=NR+1} # detect next line with seg id
+k==2 && (NR==uttNR) {utt=$1; gsub("[\":]","",utt); 
+                     if (!(utt in TEXT)){ print "ERROR: utterance " utt " in not in text" > "/dev/stderr"; exit }
+     }
+k==2 {
+nSym=nSym+2; # +start and end symbol
+
+}
+' k=0 data/$label/train_units.txt k=1 data/$label/text k=2 $json_in | less 
+
+
+
